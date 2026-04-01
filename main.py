@@ -1,92 +1,93 @@
 import pandas as pd
 import numpy as np
 
+df = pd.read_csv("electric_vehicle_analytics CHANGED (1).csv")
+
+df.head()
+df = df.drop(["Make", "Model", "Vehicle_Type"], axis=1)
+
+y_reg = df["Battery_Health_%"]
+
+df["Battery_Status"] = df["Battery_Health_%"].apply(lambda x: 1 if x > 70 else 0)
+y_clf = df["Battery_Status"]
+
+X = df.drop(["Battery_Health_%", "Battery_Status"], axis=1)
 from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train_reg, y_test_reg = train_test_split(X, y_reg, test_size=0.2, random_state=42)
+
+_, _, y_train_clf, y_test_clf = train_test_split(X, y_clf, test_size=0.2, random_state=42)
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
-
-from sklearn.linear_model import LinearRegression
-from sklearn.svm import SVR
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.neighbors import KNeighborsRegressor
-
-df = pd.read_csv("/content/electric_vehicle_analytics CHANGED.csv")
-
-df.drop(columns=["Vehicle_ID"], errors="ignore", inplace=True)
-
-# save original columns
-df = pd.get_dummies(df, drop_first=True)
-
-X = df.drop("Battery_Health_%", axis=1)
-y = df["Battery_Health_%"]
-
-
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-
 
 scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
 
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, r2_score
 
-models = {
-    "Linear Regression": LinearRegression(),
-    "KNN": KNeighborsRegressor(),
-    "SVM": SVR(),
-    "Random Forest": RandomForestRegressor(n_estimators=300,max_depth=10,random_state=42)
-}
+lr = LinearRegression()
+lr.fit(X_train, y_train_reg)
 
-results = []
+y_pred_lr = lr.predict(X_test)
 
-for name, model in models.items():
+print("Linear Regression")
+print("MAE:", mean_absolute_error(y_test_reg, y_pred_lr))
+print("R2:", r2_score(y_test_reg, y_pred_lr))
+from sklearn.ensemble import RandomForestRegressor
 
-    if name in ["KNN", "SVM"]:
-        model.fit(X_train_scaled, y_train)
-        pred = model.predict(X_test_scaled)
-    else:
-        model.fit(X_train, y_train)
-        pred = model.predict(X_test)
+rf = RandomForestRegressor(n_estimators=100)
+rf.fit(X_train, y_train_reg)
 
-    r2 = r2_score(y_test, pred)
-    mae = mean_absolute_error(y_test, pred)
-    rmse = np.sqrt(mean_squared_error(y_test, pred))
+y_pred_rf = rf.predict(X_test)
 
-    results.append([name, r2, mae, rmse])
+print("\nRandom Forest")
+print("MAE:", mean_absolute_error(y_test_reg, y_pred_rf))
+print("R2:", r2_score(y_test_reg, y_pred_rf))
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
 
+log_reg = LogisticRegression()
+log_reg.fit(X_train, y_train_clf)
 
-results_df = pd.DataFrame(results, columns=["Model", "R2", "MAE", "RMSE"])
+y_pred_log = log_reg.predict(X_test)
 
-print("\n===== MODEL COMPARISON MATRIX =====\n")
-print(results_df)
+print("\nLogistic Regression")
+print("Accuracy:", accuracy_score(y_test_clf, y_pred_log))
+print(classification_report(y_test_clf, y_pred_log))
+from sklearn.svm import SVC
 
-best = results_df.sort_values(by="R2", ascending=False).iloc[0]
-best_model_name = best["Model"]
-best_model = models[best_model_name]
+svc = SVC(kernel='rbf')
+svc.fit(X_train, y_train_clf)
 
-print("\nBEST MODEL:", best_model_name)
+y_pred_svm = svc.predict(X_test)
 
+print("\nSVM")
+print("Accuracy:", accuracy_score(y_test_clf, y_pred_svm))
+print(classification_report(y_test_clf, y_pred_svm))
+from sklearn.neighbors import KNeighborsClassifier
 
-print("\n===== ENTER INPUT (y = give value, n = skip → 0) =====")
+knn = KNeighborsClassifier(n_neighbors=5)
+knn.fit(X_train, y_train_clf)
 
-input_data = {}
+y_pred_knn = knn.predict(X_test)
 
-for col in X.columns:
-    choice = input(f"{col}? (y/n): ").lower()
+print("\nKNN")
+print("Accuracy:", accuracy_score(y_test_clf, y_pred_knn))
+print(classification_report(y_test_clf, y_pred_knn))
+print("\n--- Regression Comparison ---")
+print("Linear R2:", r2_score(y_test_reg, y_pred_lr))
+print("Random Forest R2:", r2_score(y_test_reg, y_pred_rf))
+print("\n--- Classification Comparison ---")
+print("Logistic:", accuracy_score(y_test_clf, y_pred_log))
+print("SVM:", accuracy_score(y_test_clf, y_pred_svm))
+print("KNN:", accuracy_score(y_test_clf, y_pred_knn))
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-    if choice == "y":
-        val = float(input(f"Enter value for {col}: "))
-        input_data[col] = val
-    else:
-        input_data[col] = 0
+cm = confusion_matrix(y_test_clf, y_pred_svm)
 
-
-input_df = pd.DataFrame([input_data])
-input_df = input_df.reindex(columns=X.columns, fill_value=0)
-
-if best_model_name in ["KNN", "SVM"]:
-    input_df = scaler.transform(input_df)
-
-prediction = best_model.predict(input_df)
-
-print("\n===== RESULT =====")
-print(f"Predicted Battery Health: {prediction[0]:.2f}%")
+sns.heatmap(cm, annot=True, fmt='d')
+plt.title("Confusion Matrix (SVM)")
+plt.show()
