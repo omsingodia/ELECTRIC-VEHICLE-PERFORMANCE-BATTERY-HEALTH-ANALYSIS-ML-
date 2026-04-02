@@ -1,93 +1,176 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
-df = pd.read_csv("electric_vehicle_analytics CHANGED (1).csv")
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import (
+    r2_score, mean_absolute_error, mean_squared_error,
+    accuracy_score, precision_score, recall_score, f1_score
+)
 
-df.head()
-df = df.drop(["Make", "Model", "Vehicle_Type"], axis=1)
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.svm import SVR, SVC
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
+
+
+df = pd.read_csv("/content/electric_vehicle_analytics CHANGED.csv")
+
+print("\n===== DATA PREVIEW =====")
+print(df.head())
+
+
+print("\n===== DATA INFO =====")
+print(df.info())
+
+print("\n===== MISSING VALUES =====")
+print(df.isnull().sum())
+
+print("\n===== STATISTICS =====")
+print(df.describe())
+
+df.drop(columns=["Vehicle_ID"], errors="ignore", inplace=True)
+df.drop(columns=["Make", "Model", "Vehicle_Type"], errors="ignore", inplace=True)
+
+X = df[[
+    "Charge_Cycles",
+    "Temperature_C",
+    "Mileage_km",
+    "Battery_Capacity_kWh",
+    "Energy_Consumption_kWh_per_100km"
+]]
 
 y_reg = df["Battery_Health_%"]
 
-df["Battery_Status"] = df["Battery_Health_%"].apply(lambda x: 1 if x > 70 else 0)
-y_clf = df["Battery_Status"]
+df["Health_Class"] = (df["Battery_Health_%"] > 75).astype(int)
+y_clf = df["Health_Class"]
 
-X = df.drop(["Battery_Health_%", "Battery_Status"], axis=1)
-from sklearn.model_selection import train_test_split
 
-X_train, X_test, y_train_reg, y_test_reg = train_test_split(X, y_reg, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y_reg, test_size=0.2, random_state=42
+)
 
-_, _, y_train_clf, y_test_clf = train_test_split(X, y_clf, test_size=0.2, random_state=42)
-from sklearn.preprocessing import StandardScaler
+Xc_train, Xc_test, yc_train, yc_test = train_test_split(
+    X, y_clf, test_size=0.2, random_state=42, stratify=y_clf
+)
+
 
 scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
 
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, r2_score
+Xc_train_scaled = scaler.fit_transform(Xc_train)
+Xc_test_scaled = scaler.transform(Xc_test)
 
-lr = LinearRegression()
-lr.fit(X_train, y_train_reg)
 
-y_pred_lr = lr.predict(X_test)
+reg_models = {
+    "Linear Regression": LinearRegression(),
+    "KNN": KNeighborsRegressor(n_neighbors=7),
+    "SVM": SVR(),
+    "Random Forest": RandomForestRegressor(n_estimators=300, random_state=42)
+}
 
-print("Linear Regression")
-print("MAE:", mean_absolute_error(y_test_reg, y_pred_lr))
-print("R2:", r2_score(y_test_reg, y_pred_lr))
-from sklearn.ensemble import RandomForestRegressor
+reg_results = []
 
-rf = RandomForestRegressor(n_estimators=100)
-rf.fit(X_train, y_train_reg)
+for name, model in reg_models.items():
+    if name in ["KNN", "SVM"]:
+        model.fit(X_train_scaled, y_train)
+        pred = model.predict(X_test_scaled)
+    else:
+        model.fit(X_train, y_train)
+        pred = model.predict(X_test)
 
-y_pred_rf = rf.predict(X_test)
+    reg_results.append([
+        name,
+        r2_score(y_test, pred),
+        mean_absolute_error(y_test, pred),
+        np.sqrt(mean_squared_error(y_test, pred))
+    ])
 
-print("\nRandom Forest")
-print("MAE:", mean_absolute_error(y_test_reg, y_pred_rf))
-print("R2:", r2_score(y_test_reg, y_pred_rf))
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
+reg_df = pd.DataFrame(reg_results, columns=["Model", "R2", "MAE", "RMSE"])
 
-log_reg = LogisticRegression()
-log_reg.fit(X_train, y_train_clf)
+print("\n===== REGRESSION MATRIX =====")
+print(reg_df)
 
-y_pred_log = log_reg.predict(X_test)
 
-print("\nLogistic Regression")
-print("Accuracy:", accuracy_score(y_test_clf, y_pred_log))
-print(classification_report(y_test_clf, y_pred_log))
-from sklearn.svm import SVC
+clf_models = {
+    "Logistic Regression": LogisticRegression(class_weight='balanced'),
+    "SVM": SVC(class_weight='balanced'),
+    "KNN": KNeighborsClassifier(n_neighbors=7),
+    "Random Forest": RandomForestClassifier(n_estimators=300, class_weight='balanced')
+}
 
-svc = SVC(kernel='rbf')
-svc.fit(X_train, y_train_clf)
+clf_results = []
 
-y_pred_svm = svc.predict(X_test)
+for name, model in clf_models.items():
+    model.fit(Xc_train_scaled, yc_train)
+    pred = model.predict(Xc_test_scaled)
 
-print("\nSVM")
-print("Accuracy:", accuracy_score(y_test_clf, y_pred_svm))
-print(classification_report(y_test_clf, y_pred_svm))
-from sklearn.neighbors import KNeighborsClassifier
+    clf_results.append([
+        name,
+        accuracy_score(yc_test, pred),
+        precision_score(yc_test, pred, zero_division=0),
+        recall_score(yc_test, pred, zero_division=0),
+        f1_score(yc_test, pred, zero_division=0)
+    ])
 
-knn = KNeighborsClassifier(n_neighbors=5)
-knn.fit(X_train, y_train_clf)
+clf_df = pd.DataFrame(clf_results, columns=["Model", "Accuracy", "Precision", "Recall", "F1"])
 
-y_pred_knn = knn.predict(X_test)
+print("\n===== CLASSIFICATION MATRIX =====")
+print(clf_df)
 
-print("\nKNN")
-print("Accuracy:", accuracy_score(y_test_clf, y_pred_knn))
-print(classification_report(y_test_clf, y_pred_knn))
-print("\n--- Regression Comparison ---")
-print("Linear R2:", r2_score(y_test_reg, y_pred_lr))
-print("Random Forest R2:", r2_score(y_test_reg, y_pred_rf))
-print("\n--- Classification Comparison ---")
-print("Logistic:", accuracy_score(y_test_clf, y_pred_log))
-print("SVM:", accuracy_score(y_test_clf, y_pred_svm))
-print("KNN:", accuracy_score(y_test_clf, y_pred_knn))
-from sklearn.metrics import confusion_matrix
-import seaborn as sns
-import matplotlib.pyplot as plt
 
-cm = confusion_matrix(y_test_clf, y_pred_svm)
-
-sns.heatmap(cm, annot=True, fmt='d')
-plt.title("Confusion Matrix (SVM)")
+plt.figure()
+plt.bar(reg_df["Model"], reg_df["R2"])
+plt.title("Regression Comparison (R2)")
+plt.xlabel("Model")
+plt.ylabel("R2")
 plt.show()
+
+plt.figure()
+plt.bar(clf_df["Model"], clf_df["Accuracy"])
+plt.title("Classification Accuracy Comparison")
+plt.xlabel("Model")
+plt.ylabel("Accuracy")
+plt.show()
+
+plt.figure()
+plt.bar(clf_df["Model"], clf_df["F1"])
+plt.title("F1 Score Comparison")
+plt.xlabel("Model")
+plt.ylabel("F1")
+plt.show()
+
+
+best_reg = reg_df.sort_values(by="R2", ascending=False).iloc[0]
+best_clf = clf_df.sort_values(by="Accuracy", ascending=False).iloc[0]
+
+print("\n🔥 BEST REGRESSION MODEL:", best_reg["Model"])
+print("🔥 BEST CLASSIFICATION MODEL:", best_clf["Model"])
+
+
+print("\n===== ENTER INPUT =====")
+
+cycles = float(input("Charge Cycles: "))
+temp = float(input("Temperature: "))
+mileage = float(input("Mileage: "))
+battery = float(input("Battery Capacity: "))
+energy = float(input("Energy Consumption: "))
+
+sample = pd.DataFrame([{
+    "Charge_Cycles": cycles,
+    "Temperature_C": temp,
+    "Mileage_km": mileage,
+    "Battery_Capacity_kWh": battery,
+    "Energy_Consumption_kWh_per_100km": energy
+}])
+
+sample_scaled = scaler.transform(sample)
+
+
+best_model = clf_models[best_clf["Model"]]
+prediction = best_model.predict(sample_scaled)
+
+print("\n===== RESULT =====")
+print("Battery Condition:", "GOOD " if prediction[0] == 1 else "BAD ")
