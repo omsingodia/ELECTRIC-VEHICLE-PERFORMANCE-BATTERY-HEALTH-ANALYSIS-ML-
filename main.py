@@ -141,36 +141,3 @@ plt.title("F1 Score Comparison")
 plt.xlabel("Model")
 plt.ylabel("F1")
 plt.show()
-
-
-best_reg = reg_df.sort_values(by="R2", ascending=False).iloc[0]
-best_clf = clf_df.sort_values(by="Accuracy", ascending=False).iloc[0]
-
-print("\n🔥 BEST REGRESSION MODEL:", best_reg["Model"])
-print("🔥 BEST CLASSIFICATION MODEL:", best_clf["Model"])
-
-
-print("\n===== ENTER INPUT =====")
-
-cycles = float(input("Charge Cycles: "))
-temp = float(input("Temperature: "))
-mileage = float(input("Mileage: "))
-battery = float(input("Battery Capacity: "))
-energy = float(input("Energy Consumption: "))
-
-sample = pd.DataFrame([{
-    "Charge_Cycles": cycles,
-    "Temperature_C": temp,
-    "Mileage_km": mileage,
-    "Battery_Capacity_kWh": battery,
-    "Energy_Consumption_kWh_per_100km": energy
-}])
-
-sample_scaled = scaler.transform(sample)
-
-
-best_model = clf_models[best_clf["Model"]]
-prediction = best_model.predict(sample_scaled)
-
-print("\n===== RESULT =====")
-print("Battery Condition:", "GOOD " if prediction[0] == 1 else "BAD ")
